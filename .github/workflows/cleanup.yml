@@ -1,0 +1,41 @@
+name: Cleanup old artifacts & caches
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 4 * * 0'   # раз в неделю (воскресенье 04:00 UTC), дешёвая операция
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  delete-old-artifacts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Keep only the latest artifact, delete the rest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          ids=$(gh api "repos/$REPO/actions/artifacts" --paginate --jq '.artifacts | sort_by(.created_at) | reverse | .[1:] | .[].id')
+          for id in $ids; do
+            echo "Deleting artifact $id"
+            gh api -X DELETE "repos/$REPO/actions/artifacts/$id" || true
+          done
+
+  delete-old-caches:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cleanup Actions cache
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          keys=$(gh api "repos/$REPO/actions/caches" --paginate --jq '.actions_caches[].id' || true)
+          for key in $keys; do
+            echo "Deleting cache $key"
+            gh api -X DELETE "repos/$REPO/actions/caches/$key" || true
+          done
